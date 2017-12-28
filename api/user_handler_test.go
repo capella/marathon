@@ -98,12 +98,6 @@ var _ = Describe("User Handler", func() {
 				Expect(status).To(Equal(http.StatusUnauthorized))
 			})
 
-			It("should return 403 if user is not admin", func() {
-				CreateTestUser(app.DB, map[string]interface{}{"email": "test2@test.com", "isAdmin": false})
-				status, _ := Get(app, "/users", "test2@test.com")
-				Expect(status).To(Equal(http.StatusForbidden))
-			})
-
 			It("should return 500 if some error occured", func() {
 				goodDB := app.DB
 				app.DB = faultyDb
@@ -300,6 +294,15 @@ var _ = Describe("User Handler", func() {
 
 				Expect(status).To(Equal(http.StatusInternalServerError))
 				app.DB = goodDB
+			})
+
+			It("should return 403 if user is not admin", func() {
+				existingUser := CreateTestUser(app.DB)
+				CreateTestUser(app.DB, map[string]interface{}{"email": "test2@test.com", "isAdmin": false})
+				payload := GetUserPayload()
+				pl, _ := json.Marshal(payload)
+				status, _ := Put(app, fmt.Sprintf("/users/%s", existingUser.ID), string(pl), "test2@test.com")
+				Expect(status).To(Equal(http.StatusForbidden))
 			})
 
 			It("should return 422 if user id is not UUID", func() {

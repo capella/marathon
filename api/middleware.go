@@ -331,6 +331,10 @@ func (a UserAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 			return c.String(500, "Internal server error.")
 		}
+		path := c.Path()
+		if path == "/users" {
+			return next(c)
+		}
 		if user.IsAdmin {
 			return next(c)
 		}
