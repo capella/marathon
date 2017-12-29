@@ -267,7 +267,7 @@ func (a AppAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		userEmail := c.Request().Header.Get("x-forwarded-email")
 		if userEmail == "" {
-			return c.String(401, "Authentication failed.")
+			return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 		}
 		c.Set("user-email", userEmail)
 		user := &model.User{}
@@ -276,9 +276,9 @@ func (a AppAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 		})
 		if err != nil {
 			if err.Error() == RecordNotFoundString {
-				return c.String(401, "Authentication failed.")
+				return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 			}
-			return c.String(500, "Internal server error.")
+			return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error()})
 		}
 		path := c.Path()
 		if path == "/apps" {
@@ -296,7 +296,7 @@ func (a AppAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 				return next(c)
 			}
 		}
-		return c.String(403, "Forbidden.")
+		return c.JSON(http.StatusForbidden, map[string]string{"status": "Forbidden."})
 	}
 }
 
@@ -315,10 +315,9 @@ type UserAuthMiddleware struct {
 //Serve Validate that a user exists
 func (a UserAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// path := c.Path()
 		userEmail := c.Request().Header.Get("x-forwarded-email")
 		if userEmail == "" {
-			return c.String(401, "Authentication failed.")
+			return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 		}
 		c.Set("user-email", userEmail)
 		user := &model.User{}
@@ -327,9 +326,9 @@ func (a UserAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 		})
 		if err != nil {
 			if err.Error() == RecordNotFoundString {
-				return c.String(401, "Authentication failed.")
+				return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 			}
-			return c.String(500, "Internal server error.")
+			return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error()})
 		}
 		path := c.Path()
 		if path == "/users" {
@@ -338,7 +337,7 @@ func (a UserAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 		if user.IsAdmin {
 			return next(c)
 		}
-		return c.String(403, "Forbidden.")
+		return c.JSON(http.StatusForbidden, map[string]string{"status": "Forbidden."})
 	}
 }
 
@@ -357,10 +356,9 @@ type UploadAuthMiddleware struct {
 //Serve Validate that a user exists
 func (a UploadAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		// path := c.Path()
 		userEmail := c.Request().Header.Get("x-forwarded-email")
 		if userEmail == "" {
-			return c.String(401, "Authentication failed.")
+			return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 		}
 		c.Set("user-email", userEmail)
 		user := &model.User{}
@@ -369,9 +367,9 @@ func (a UploadAuthMiddleware) Serve(next echo.HandlerFunc) echo.HandlerFunc {
 		})
 		if err != nil {
 			if err.Error() == RecordNotFoundString {
-				return c.String(401, "Authentication failed.")
+				return c.JSON(http.StatusUnauthorized, map[string]string{"status": "Unauthorized."})
 			}
-			return c.String(500, "Internal server error.")
+			return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error()})
 		}
 		return next(c)
 	}
