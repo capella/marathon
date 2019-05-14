@@ -165,12 +165,17 @@ func (a *Application) configureApplication() {
 	e.Logger.SetOutput(w)
 	e.Pre(middleware.RemoveTrailingSlash())
 
+	iamURL := a.Config.GetString("auth.url")
+	if iamURL == "" {
+		panic("IAM url is empty")
+	}
+
 	// Base Routes
 	e.GET("/healthcheck", a.HealthcheckHandler)
 
 	uploadGroup := e.Group("/uploadurl")
 	// AuthMiddleware MUST be the first middleware
-	uploadGroup.Use(NewUploadAuthMiddleware(a).Serve)
+	// uploadGroup.Use(NewUploadAuthMiddleware(a).Serve)
 	uploadGroup.Use(NewLoggerMiddleware(a.Logger).Serve)
 	uploadGroup.Use(NewRecoveryMiddleware(a.OnErrorHandler).Serve)
 	uploadGroup.Use(NewVersionMiddleware().Serve)
@@ -182,7 +187,7 @@ func (a *Application) configureApplication() {
 
 	appGroup := e.Group("/apps")
 	// AuthMiddleware MUST be the first middleware
-	appGroup.Use(NewAppAuthMiddleware(a).Serve)
+	// appGroup.Use(NewAppAuthMiddleware(a).Serve)
 	appGroup.Use(NewLoggerMiddleware(a.Logger).Serve)
 	appGroup.Use(NewRecoveryMiddleware(a.OnErrorHandler).Serve)
 	appGroup.Use(NewVersionMiddleware().Serve)

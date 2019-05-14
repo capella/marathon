@@ -30,12 +30,13 @@ import (
 
 // App is the app model struct
 type App struct {
-	ID        uuid.UUID `sql:",pk" json:"id"`
-	Name      string    `json:"name"`
-	BundleID  string    `json:"bundleId"`
-	CreatedBy string    `json:"createdBy"`
-	CreatedAt int64     `json:"createdAt"`
-	UpdatedAt int64     `json:"updatedAt"`
+	ID        uuid.UUID   `sql:",pk" json:"id"`
+	Name      string      `json:"name"`
+	BundleID  string      `json:"bundleId"`
+	CreatedBy string      `json:"createdBy"`
+	CreatedAt int64       `json:"createdAt"`
+	UpdatedAt int64       `json:"updatedAt"`
+	JobGroup  []*JobGroup `json:"job_groups"`
 }
 
 // Validate implementation of the InputValidation interface

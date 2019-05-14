@@ -28,6 +28,7 @@ import (
 	"strings"
 	"time"
 
+	"gopkg.in/pg.v5"
 	"gopkg.in/pg.v5/types"
 
 	"github.com/labstack/echo"
@@ -89,6 +90,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 	err = WithSegment("db-select", c, func() error {
 		return a.DB.Select(&app)
 	})
+
 	if err != nil {
 		if err.Error() == RecordNotFoundString {
 			return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "App not found with given id."})
@@ -103,7 +105,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 	if templateName == "" {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "template name must be specified"})
 	}
-	userEmail := c.Get("user-email").(string)
+	userEmail := "temp@temp.com"
 	job := &model.Job{
 		ID:           uuid.NewV4(),
 		AppID:        aid,
@@ -121,9 +123,14 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error(), Value: job})
 	}
 
-	skip, err := a.checkFilters(job, c)
-	if err != nil || skip {
-		return err
+	var skip bool
+	services := strings.Split(job.Service, ",")
+	for _, service := range services {
+		job.Service = service
+		skip, err = a.checkFilters(job, c)
+		if err != nil || skip {
+			return err
+		}
 	}
 
 	skip, err = a.checkTemplateName(templateName, job, c)
@@ -136,6 +143,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr, Value: job})
 	}
 
+	jobs := []model.Job{}
 	err = WithSegment("create-job", c, func() error {
 		scheduleJob := job.StartsAt
 
@@ -143,7 +151,13 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 			ID:    uuid.NewV4(),
 			AppID: app.ID,
 		}
-		err := WithSegment("create-group", c, func() error {
+
+		// use transaction to prevent error
+		tx, err := a.DB.Begin()
+		// Rollback tx on error.
+		defer tx.Rollback()
+
+		err = WithSegment("create-group", c, func() error {
 			return a.DB.Insert(&jobGroup)
 		})
 		if err != nil {
@@ -151,33 +165,56 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		}
 		job.JobGroupID = jobGroup.ID
 
-		if scheduleJob == 0 || !job.Localized {
-			log.I(l, "Create a simple job.")
-			return a.createJob(job, c)
-		}
+		// create a job for each aervice
+		for _, service := range services {
+			job.Service = service
 
-		// create a job for each tz
-		for i := -12; i <= 14; i++ {
-			tzs := []string{
-				fmt.Sprintf("%+.4d", i*100-55), // 100 - 55 = 45
-				fmt.Sprintf("%+.4d", i*100),
-				fmt.Sprintf("%+.4d", i*100+15),
-				fmt.Sprintf("%+.4d", i*100+30),
-			}
-			sendTime := time.Unix(0, scheduleJob).Add(time.Duration(i) * time.Hour)
-			if sendTime.Before(time.Now()) {
-				if job.PastTimeStrategy == "skip" {
+			if scheduleJob == 0 || !job.Localized {
+				job.ID = uuid.NewV4()
+				log.I(l, "Create a simple job.")
+				err = a.createJob(job, c, tx)
+				if err == nil {
+					jobs = append(jobs, *job)
 					continue
 				}
-				sendTime = sendTime.Add(time.Duration(24) * time.Hour)
+				return err
 			}
 
-			job.StartsAt = sendTime.UnixNano()
-			job.Filters["tz"] = strings.Join(tzs, ",")
-			job.ID = uuid.NewV4()
-			log.I(l, "Create a timezone job.")
+			// create a job for each tz
+			for i := -12; i <= 14; i++ {
+				tzs := []string{
+					fmt.Sprintf("%+.4d", i*100-55), // 100 - 55 = 45
+					fmt.Sprintf("%+.4d", i*100),
+					fmt.Sprintf("%+.4d", i*100+15),
+					fmt.Sprintf("%+.4d", i*100+30),
+				}
+				sendTime := time.Unix(0, scheduleJob).Add(time.Duration(i) * time.Hour)
+				if sendTime.Before(time.Now()) {
+					if job.PastTimeStrategy == "skip" {
+						continue
+					}
+					sendTime = sendTime.Add(time.Duration(24) * time.Hour)
+				}
+				job.StartsAt = sendTime.UnixNano()
+				job.Filters["tz"] = strings.Join(tzs, ",")
+				job.ID = uuid.NewV4()
+				log.I(l, "Create a timezone job.")
 
-			err = a.createJob(job, c)
+				err = a.createJob(job, c, tx)
+				if err == nil {
+					jobs = append(jobs, *job)
+					continue
+				}
+				return err
+			}
+		}
+		err = tx.Commit()
+		if err != nil {
+			return err
+		}
+
+		for _, job := range jobs {
+			err = a.sendJobToWorker(&job)
 			if err != nil {
 				return err
 			}
@@ -205,7 +242,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		}
 		log.I(l, "Successfully sent email with job info.")
 	}
-	return c.JSON(http.StatusCreated, job)
+	return c.JSON(http.StatusCreated, jobs[0])
 }
 
 func (a *Application) checkFilters(job *model.Job, c echo.Context) (bool, error) {
@@ -299,7 +336,7 @@ func (a *Application) checkTemplateName(templateName string, job *model.Job, c e
 	return false, nil
 }
 
-func (a *Application) createJobWorkers(job *model.Job, c echo.Context) error {
+func (a *Application) createJobWorkers(job *model.Job) error {
 	var err error
 	if job.StartsAt != 0 {
 		if len(job.CSVPath) > 0 {
@@ -317,9 +354,9 @@ func (a *Application) createJobWorkers(job *model.Job, c echo.Context) error {
 	return err
 }
 
-func (a *Application) createJob(job *model.Job, c echo.Context) error {
+func (a *Application) createJob(job *model.Job, c echo.Context, tx *pg.Tx) error {
 	err := WithSegment("db-insert", c, func() error {
-		return a.DB.Insert(&job)
+		return tx.Insert(&job)
 	})
 
 	if err != nil {
@@ -331,9 +368,11 @@ func (a *Application) createJob(job *model.Job, c echo.Context) error {
 		}
 		return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error(), Value: job})
 	}
-	a.createJobWorkers(job, c)
-
 	return nil
+}
+
+func (a *Application) sendJobToWorker(job *model.Job) error {
+	return a.createJobWorkers(job)
 }
 
 // GetJobHandler is the method called when a get to /apps/:aid/templates/:templateName/jobs/:jid is called
