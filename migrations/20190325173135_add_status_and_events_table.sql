@@ -39,5 +39,7 @@ ON UPDATE CASCADE;
 -- +goose Down
 -- SQL section 'Down' is executed when this migration is rolled back
 
+DROP TYPE events_status;
+
 DROP TABLE "status";
 DROP TABLE "events";

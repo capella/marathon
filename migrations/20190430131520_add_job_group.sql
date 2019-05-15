@@ -21,4 +21,4 @@ ALTER TABLE "jobs" ADD COLUMN job_group_id uuid DEFAULT uuid_generate_v4();
 -- SQL section 'Down' is executed when this migration is rolled back
 
 ALTER TABLE "jobs" DROP COLUMN job_group_id;
-DROP TABLE "job_group";
+DROP TABLE "job_groups";
