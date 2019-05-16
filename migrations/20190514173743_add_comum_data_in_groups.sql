@@ -8,13 +8,16 @@ ALTER TABLE job_groups ADD COLUMN "template_name" text NOT NULL DEFAULT '';
 ALTER TABLE job_groups ADD COLUMN "control_group" real;
 ALTER TABLE job_groups ADD COLUMN "created_by" text;
 ALTER TABLE job_groups ADD COLUMN "csv_path" text;
+ALTER TABLE job_groups ADD COLUMN "localized" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE job_groups ADD COLUMN "localized" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE job_groups ADD COLUMN "past_time_strategy" TEXT;
 
 ALTER TABLE job_groups DROP CONSTRAINT jobs_group_app_id_apps_id_foreign;
 TRUNCATE job_groups;
 
-INSERT INTO job_groups (id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path)
-SELECT job_group_id as id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path
-FROM jobs GROUP BY job_group_id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path;
+INSERT INTO job_groups (id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path, localized, past_time_strategy)
+SELECT job_group_id as id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path, localized, past_time_strategy 
+FROM jobs GROUP BY job_group_id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path, localized, past_time_strategy;
 
 ALTER TABLE jobs DROP COLUMN "app_id";
 ALTER TABLE jobs DROP COLUMN "created_at";
@@ -24,6 +27,8 @@ ALTER TABLE jobs DROP COLUMN "template_name";
 ALTER TABLE jobs DROP COLUMN "control_group";
 ALTER TABLE jobs DROP COLUMN "created_by";
 ALTER TABLE jobs DROP COLUMN "csv_path";
+ALTER TABLE jobs DROP COLUMN "localized";
+ALTER TABLE jobs DROP COLUMN "past_time_strategy";
 
 ALTER TABLE job_groups ALTER COLUMN created_at DROP DEFAULT;
 ALTER TABLE job_groups ALTER COLUMN template_name DROP DEFAULT;
@@ -45,6 +50,8 @@ ALTER TABLE jobs ADD COLUMN "template_name" text NOT NULL DEFAULT '';
 ALTER TABLE jobs ADD COLUMN "control_group" real;
 ALTER TABLE jobs ADD COLUMN "created_by" text;
 ALTER TABLE jobs ADD COLUMN "csv_path" text;
+ALTER TABLE jobs ADD COLUMN "localized" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE jobs ADD COLUMN "past_time_strategy" TEXT;
 
 UPDATE jobs
 SET 
@@ -56,7 +63,9 @@ SET
 	control_group=sub.control_group,
 	created_by=sub.created_by,
 	csv_path=sub.csv_path
-FROM (SELECT id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path
+	localized=sub.localized
+	past_time_strategy=sub.past_time_strategy
+FROM (SELECT id, app_id, created_at, context, metadata, template_name, control_group, created_by, csv_path, localized, past_time_strategy
       FROM job_groups) AS sub
 WHERE jobs.job_group_id=sub.id;
 
@@ -70,3 +79,5 @@ ALTER TABLE job_groups DROP COLUMN "template_name";
 ALTER TABLE job_groups DROP COLUMN "control_group";
 ALTER TABLE job_groups DROP COLUMN "created_by";
 ALTER TABLE job_groups DROP COLUMN "csv_path";
+ALTER TABLE job_groups DROP COLUMN "localized";
+ALTER TABLE job_groups DROP COLUMN "past_time_strategy";
