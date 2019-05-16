@@ -74,7 +74,7 @@ func (a *Application) PostTemplateHandler(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
-	email := c.Get("user-email").(string)
+	email := "temp.com"
 	if c.QueryParam("multiple") == "true" {
 		var templates []*model.Template
 		err = WithSegment("decodeAndValidate", c, func() error {

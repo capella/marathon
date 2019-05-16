@@ -32,7 +32,6 @@ import (
 	"github.com/topfreegames/marathon/log"
 	"github.com/topfreegames/marathon/model"
 	"github.com/uber-go/zap"
-	"gopkg.in/pg.v8/orm"
 )
 
 // ListAppsHandler is the method called when a get to /apps is called
@@ -110,7 +109,6 @@ func (a *Application) GetAppHandler(c echo.Context) error {
 	err = WithSegment("db-select", c, func() error {
 		return a.DB.Model(&app).
 			Column("app.*", "JobGroup", "JobGroup.Jobs").
-			Apply(orm.Pagination(c.QueryParams())).
 			Select()
 	})
 	if err != nil {

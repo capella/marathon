@@ -23,7 +23,9 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"strings"
 	"time"
@@ -73,17 +75,34 @@ func (a *Application) ListJobsHandler(c echo.Context) error {
 	return c.JSON(http.StatusOK, jobs)
 }
 
-// PostJobHandler is the method called when a post to /apps/:aid/templates/:templateName/jobs is called
-func (a *Application) PostJobHandler(c echo.Context) error {
-	l := a.Logger.With(
-		zap.String("source", "jobHandler"),
-		zap.String("operation", "postJob"),
-		zap.String("appId", c.Param("aid")),
-		zap.String("template", c.QueryParam("template")),
-	)
+// this is used to prevent the original api
+func getServices(body []byte) ([]string, error) {
+	var services struct {
+		Service string `json:"service"`
+	}
+	if err := json.Unmarshal(body, &services); err != nil {
+		return nil, err
+	}
+	return strings.Split(services.Service, ","), nil
+}
+
+// this is used to prevent the original api
+func getStartAt(body []byte) (int64, error) {
+	var start struct {
+		Time int64 `json:"startsAt"`
+	}
+	if err := json.Unmarshal(body, &start); err != nil {
+		return 0, err
+	}
+	fmt.Println(".", start)
+	return start.Time, nil
+}
+
+// getApp checks if aid is valid
+func (a *Application) getApp(c echo.Context) (*model.App, error) {
 	aid, err := uuid.FromString(c.Param("aid"))
 	if err != nil {
-		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
+		return nil, c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
 
 	app := &model.App{ID: aid}
@@ -93,65 +112,169 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 
 	if err != nil {
 		if err.Error() == RecordNotFoundString {
-			return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "App not found with given id."})
+			return nil, c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "App not found with given id."})
 		}
-		log.E(l, "Failed to retrieve app.", func(cm log.CM) {
-			cm.Write(zap.Error(err))
-		})
-		return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error(), Value: app})
+		return nil, c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error(), Value: app})
+	}
+	return app, nil
+}
+
+func calculateStartAtDiffAndTZ(jg *model.JobGroup, startsAt int64) ([]int64, []string) {
+	// startsAt = startsAt / 1000
+	if startsAt == 0 || !jg.Localized {
+		return []int64{0}, []string{""}
+	}
+	diffs, tzs := []int64{}, []string{}
+
+	// create a job for each tz
+	for i := -12; i <= 14; i++ {
+		tzsString := []string{
+			fmt.Sprintf("%+.4d", i*100-55), // 100 - 55 = 45
+			fmt.Sprintf("%+.4d", i*100),
+			fmt.Sprintf("%+.4d", i*100+15),
+			fmt.Sprintf("%+.4d", i*100+30),
+		}
+		sendTime := time.Unix(0, startsAt).Add(time.Duration(i) * time.Hour)
+		if sendTime.Before(time.Now()) {
+			if jg.PastTimeStrategy == "skip" {
+				continue
+			}
+			sendTime = sendTime.Add(time.Duration(24) * time.Hour)
+		}
+
+		diffs = append(diffs, sendTime.UnixNano())
+		tzs = append(tzs, strings.Join(tzsString, ","))
+	}
+	return diffs, tzs
+}
+
+// PostJobHandler is the method called when a post to /apps/:aid/templates/:templateName/jobs is called
+func (a *Application) PostJobHandler(c echo.Context) error {
+	l := a.Logger.With(
+		zap.String("source", "jobHandler"),
+		zap.String("operation", "postJob"),
+		zap.String("appId", c.Param("aid")),
+		zap.String("template", c.QueryParam("template")),
+	)
+
+	app, err := a.getApp(c)
+	if err != nil {
+		return err
 	}
 
+	// checkTemplate
 	templateName := c.QueryParam("template")
 	if templateName == "" {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "template name must be specified"})
 	}
+
+	// Get username from William
+	// TODO: add wiliam
 	userEmail := "temp@temp.com"
-	job := &model.Job{
+
+	body, err := ioutil.ReadAll(c.Request().Body)
+	if err != nil {
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "invalid input"})
+	}
+
+	services, err := getServices(body)
+	if err != nil || len(services) == 0 {
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "invalid service"})
+	}
+
+	startsAt, err := getStartAt(body)
+	if err != nil || len(services) == 0 {
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "invalid service"})
+	}
+
+	jobGroup := &model.JobGroup{
 		ID:           uuid.NewV4(),
-		AppID:        aid,
+		AppID:        app.ID,
+		App:          app,
 		TemplateName: templateName,
 		CreatedBy:    userEmail,
 		CreatedAt:    time.Now().UnixNano(),
-		UpdatedAt:    time.Now().UnixNano(),
-		App:          *app,
 	}
 
-	err = WithSegment("decodeAndValidate", c, func() error {
-		return decodeAndValidate(c, job)
+	// validate group
+	err = WithSegment("decodeBytes-jobGroup", c, func() error {
+		return decodeBytes(body, jobGroup)
 	})
 	if err != nil {
-		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error(), Value: job})
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
+	}
+	err = WithSegment("validateBytes-jobGroup", c, func() error {
+		return validateBytes(body, jobGroup)
+	})
+	if err != nil {
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
 
-	var skip bool
-	services := strings.Split(job.Service, ",")
-	for _, service := range services {
-		job.Service = service
-		skip, err = a.checkFilters(job, c)
-		if err != nil || skip {
-			return err
-		}
-	}
-
-	skip, err = a.checkTemplateName(templateName, job, c)
-	if err != nil || skip {
-		return err
-	}
-
-	if job.StartsAt == 0 && job.Localized {
+	// validate time
+	if startsAt == 0 && jobGroup.Localized {
 		localeErr := "Job can not be localized and don't have an start time"
-		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr, Value: job})
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr})
 	}
 
-	jobs := []model.Job{}
-	err = WithSegment("create-job", c, func() error {
-		scheduleJob := job.StartsAt
+	if time.Now().UnixNano() < startsAt {
+		localeErr := "startsAt can not be in the past"
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr})
+	}
 
-		jobGroup := model.JobGroup{
-			ID:    uuid.NewV4(),
-			AppID: app.ID,
+	diffs, tzs := calculateStartAtDiffAndTZ(jobGroup, startsAt)
+	jobs := []*model.Job{}
+
+	fmt.Println("Service: ", services)
+	fmt.Println("Diffs: ", diffs)
+	fmt.Println("Tzs: ", tzs)
+
+	// create all jobs variations
+	var skip bool
+	for _, service := range services {
+		for i := range diffs {
+			job := &model.Job{
+				ID:         uuid.NewV4(),
+				UpdatedAt:  time.Now().UnixNano(),
+				JobGroup:   jobGroup,
+				JobGroupID: jobGroup.ID,
+			}
+
+			err = WithSegment("decodeBytes-job", c, func() error {
+				return decodeBytes(body, job)
+			})
+			if err != nil {
+				return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error(), Value: job})
+			}
+
+			job.Service = service
+			job.StartsAt = diffs[i]
+			if tzs[i] != "" {
+				job.Filters["tz"] = tzs[i]
+			}
+
+			err = WithSegment("validateBytes-job", c, func() error {
+				return validateBytes(body, job)
+			})
+			if err != nil {
+				return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error(), Value: job})
+			}
+
+			skip, err = a.checkFilters(job, c)
+			if err != nil {
+				return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error(), Value: job})
+			}
+			if skip {
+				continue
+			}
+			jobs = append(jobs, job)
 		}
+	}
 
+	if len(jobs) == 0 {
+		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: "no jobs could be created"})
+	}
+
+	err = WithSegment("create-job", c, func() error {
 		// use transaction to prevent error
 		tx, err := a.DB.Begin()
 		// Rollback tx on error.
@@ -163,78 +286,35 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		if err != nil {
 			return err
 		}
-		job.JobGroupID = jobGroup.ID
 
-		// create a job for each aervice
-		for _, service := range services {
-			job.Service = service
-
-			if scheduleJob == 0 || !job.Localized {
-				job.ID = uuid.NewV4()
-				log.I(l, "Create a simple job.")
-				err = a.createJob(job, c, tx)
-				if err == nil {
-					jobs = append(jobs, *job)
-					continue
-				}
-				return err
-			}
-
-			// create a job for each tz
-			for i := -12; i <= 14; i++ {
-				tzs := []string{
-					fmt.Sprintf("%+.4d", i*100-55), // 100 - 55 = 45
-					fmt.Sprintf("%+.4d", i*100),
-					fmt.Sprintf("%+.4d", i*100+15),
-					fmt.Sprintf("%+.4d", i*100+30),
-				}
-				sendTime := time.Unix(0, scheduleJob).Add(time.Duration(i) * time.Hour)
-				if sendTime.Before(time.Now()) {
-					if job.PastTimeStrategy == "skip" {
-						continue
-					}
-					sendTime = sendTime.Add(time.Duration(24) * time.Hour)
-				}
-				job.StartsAt = sendTime.UnixNano()
-				job.Filters["tz"] = strings.Join(tzs, ",")
-				job.ID = uuid.NewV4()
-				log.I(l, "Create a timezone job.")
-
-				err = a.createJob(job, c, tx)
-				if err == nil {
-					jobs = append(jobs, *job)
-					continue
-				}
-				return err
-			}
+		err = WithSegment("create-jobs", c, func() error {
+			return a.DB.Insert(&jobs)
+		})
+		if err != nil {
+			return err
 		}
 		err = tx.Commit()
 		if err != nil {
 			return err
 		}
-
-		for _, job := range jobs {
-			err = a.sendJobToWorker(&job)
-			if err != nil {
-				return err
-			}
-		}
 		return nil
 	})
 
 	if err != nil {
-		log.E(l, "Failed to send job to create_batches_worker.", func(cm log.CM) {
-			cm.Write(zap.Error(err))
-		})
-		return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error(), Value: job})
+		return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error()})
+	}
+
+	for _, job := range jobs {
+		err = a.sendJobToWorker(job)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, &Error{Reason: err.Error()})
+		}
 	}
 
 	if a.SendgridClient != nil {
 		log.D(l, "sending email with job info")
-		app := &model.App{ID: aid}
-		a.DB.Select(&app)
-
-		err := email.SendCreatedJobEmail(a.SendgridClient, job, app)
+		// Todo, send all jobs status not only the last one
+		err := email.SendCreatedJobEmail(a.SendgridClient, jobs[0], app)
 		if err != nil {
 			log.E(l, "Failed to send email with job info.", func(cm log.CM) {
 				cm.Write(zap.Error(err))
@@ -248,7 +328,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 func (a *Application) checkFilters(job *model.Job, c echo.Context) (bool, error) {
 	if job.Filters["region"] != nil || job.Filters["NOTregion"] != nil || job.Filters["locale"] != nil || job.Filters["NOTlocale"] != nil {
 		var users []worker.User
-		query := fmt.Sprintf("SELECT locale, region FROM %s WHERE locale is not NULL AND region is not NULL LIMIT 1;", worker.GetPushDBTableName(job.App.Name, job.Service))
+		query := fmt.Sprintf("SELECT locale, region FROM %s WHERE locale is not NULL AND region is not NULL LIMIT 1;", worker.GetPushDBTableName(job.JobGroup.App.Name, job.Service))
 		a.PushDB.Query(&users, query)
 		if len(users) != 1 {
 			return true, c.JSON(http.StatusInternalServerError, &Error{Reason: "Failed to check filters in Push DB"})
@@ -313,7 +393,7 @@ func (a *Application) checkTemplateName(templateName string, job *model.Job, c e
 	for _, tpl := range strings.Split(templateName, ",") {
 		template := &model.Template{}
 		err := WithSegment("db-select", c, func() error {
-			return a.DB.Model(&template).Column("template.*").Where("template.app_id = ?", job.AppID).Where("template.name = ?", tpl).First()
+			return a.DB.Model(&template).Column("template.*").Where("template.app_id = ?", job.JobGroup.AppID).Where("template.name = ?", tpl).First()
 		})
 		if err != nil {
 			if err.Error() == RecordNotFoundString {
@@ -323,7 +403,7 @@ func (a *Application) checkTemplateName(templateName string, job *model.Job, c e
 		}
 
 		err = WithSegment("db-select", c, func() error {
-			return a.DB.Model(&template).Column("template.*").Where("template.app_id = ?", job.AppID).Where("template.name = ? AND template.locale='en'", tpl).First()
+			return a.DB.Model(&template).Column("template.*").Where("template.app_id = ?", job.JobGroup.AppID).Where("template.name = ? AND template.locale='en'", tpl).First()
 		})
 		if err != nil {
 			if err.Error() == RecordNotFoundString {
@@ -339,13 +419,13 @@ func (a *Application) checkTemplateName(templateName string, job *model.Job, c e
 func (a *Application) createJobWorkers(job *model.Job) error {
 	var err error
 	if job.StartsAt != 0 {
-		if len(job.CSVPath) > 0 {
+		if len(job.JobGroup.CSVPath) > 0 {
 			_, err = a.Worker.ScheduleCSVSplitJob(job, job.StartsAt)
 		} else {
 			err = a.Worker.ScheduleDirectBatchesJob(job, job.StartsAt)
 		}
 	} else {
-		if len(job.CSVPath) > 0 {
+		if len(job.JobGroup.CSVPath) > 0 {
 			_, err = a.Worker.CreateCSVSplitJob(job)
 		} else {
 			err = a.Worker.CreateDirectBatchesJob(job)
@@ -383,7 +463,7 @@ func (a *Application) GetJobHandler(c echo.Context) error {
 		zap.String("appId", c.Param("aid")),
 		zap.String("jobId", c.Param("jid")),
 	)
-	aid, err := uuid.FromString(c.Param("aid"))
+	_, err := uuid.FromString(c.Param("aid"))
 	if err != nil {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
@@ -392,8 +472,7 @@ func (a *Application) GetJobHandler(c echo.Context) error {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
 	job := &model.Job{
-		ID:    jid,
-		AppID: aid,
+		ID: jid,
 	}
 	err = WithSegment("db-select", c, func() error {
 		return a.DB.Model(&job).Column("job.*", "App").Where("job.id = ?", job.ID).Select()
@@ -430,11 +509,11 @@ func (a *Application) PauseJobHandler(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
-	userEmail := c.Get("user-email").(string)
+	// userEmail := c.Get("user-email").(string)
 	job := &model.Job{
-		ID:        jid,
-		AppID:     aid,
-		CreatedBy: userEmail,
+		ID: jid,
+		// AppID:     aid,
+		// CreatedBy: userEmail,
 		Status:    "paused",
 		UpdatedAt: time.Now().UnixNano(),
 	}
@@ -503,9 +582,9 @@ func (a *Application) StopJobHandler(c echo.Context) error {
 	}
 	userEmail := c.Get("user-email").(string)
 	job := &model.Job{
-		ID:        jid,
-		AppID:     aid,
-		CreatedBy: userEmail,
+		ID: jid,
+		// AppID:     aid,
+		// CreatedBy: userEmail,
 		Status:    "stopped",
 		UpdatedAt: time.Now().UnixNano(),
 	}
@@ -551,7 +630,7 @@ func (a *Application) ResumeJobHandler(c echo.Context) error {
 		zap.String("appId", c.Param("aid")),
 		zap.String("jobId", c.Param("jid")),
 	)
-	aid, err := uuid.FromString(c.Param("aid"))
+	_, err := uuid.FromString(c.Param("aid"))
 	if err != nil {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
@@ -559,7 +638,7 @@ func (a *Application) ResumeJobHandler(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: err.Error()})
 	}
-	userEmail := c.Get("user-email").(string)
+	// userEmail := c.Get("user-email").(string)
 	prevJob := &model.Job{}
 	err = WithSegment("db-select", c, func() error {
 		return a.DB.Model(&prevJob).Column("job.*", "App").Where("job.id = ?", jid).Select()
@@ -595,9 +674,9 @@ func (a *Application) ResumeJobHandler(c echo.Context) error {
 	})
 
 	job := &model.Job{
-		ID:        jid,
-		AppID:     aid,
-		CreatedBy: userEmail,
+		ID: jid,
+		// AppID:     aid,
+		// CreatedBy: userEmail,
 		Status:    "",
 		UpdatedAt: time.Now().UnixNano(),
 	}

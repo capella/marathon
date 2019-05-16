@@ -216,9 +216,13 @@ func (a *Application) configureApplication() {
 	appGroup.PUT("/:aid/jobs/:jid/stop", a.StopJobHandler)
 	appGroup.PUT("/:aid/jobs/:jid/resume", a.ResumeJobHandler)
 
+	// Jobs Routes
+	appGroup.GET("/:aid/groups", a.ListGroupsHandler)
+	appGroup.GET("/:aid/groups/:gid", a.GetGroupHandler)
+
 	userGroup := e.Group("/users")
 	// AuthMiddleware MUST be the first middleware
-	userGroup.Use(NewUserAuthMiddleware(a).Serve)
+	// userGroup.Use(NewUserAuthMiddleware(a).Serve)
 	userGroup.Use(NewLoggerMiddleware(a.Logger).Serve)
 	userGroup.Use(NewRecoveryMiddleware(a.OnErrorHandler).Serve)
 	userGroup.Use(NewVersionMiddleware().Serve)

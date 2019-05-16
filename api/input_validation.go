@@ -32,7 +32,7 @@ import (
 
 // InputValidation is an interface for all "input submission" structs used for deserialization
 type InputValidation interface {
-	Validate(echo.Context) error
+	Validate() error
 }
 
 func decodeAndValidateTemplatesArray(c echo.Context, v *[]*model.Template) error {
@@ -42,7 +42,7 @@ func decodeAndValidateTemplatesArray(c echo.Context, v *[]*model.Template) error
 	}
 
 	for _, e := range *v {
-		if err := e.Validate(c); err != nil {
+		if err := e.Validate(); err != nil {
 			return err
 		}
 	}
@@ -54,5 +54,17 @@ func decodeAndValidate(c echo.Context, v InputValidation) error {
 	if err := json.NewDecoder(c.Request().Body).Decode(v); err != nil {
 		return err
 	}
-	return v.Validate(c)
+	return v.Validate()
+}
+
+func decodeBytes(body []byte, v InputValidation) error {
+	err := json.Unmarshal(body, v)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateBytes(body []byte, v InputValidation) error {
+	return v.Validate()
 }
