@@ -26,6 +26,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"time"
 
 	"github.com/jrallison/go-workers"
 	"github.com/satori/go.uuid"
@@ -100,7 +101,14 @@ func (b *JobCompletedWorker) Process(message *workers.Msg) {
 	job, err := b.Workers.GetJob(id)
 	checkErr(l, err)
 
-	job.TagRunning(b.Workers.MarathonDB, nameJobCompleted, "starting")
+	job.TagRunning(b.Workers.MarathonDB, nameJobCompleted, "checking feedbacklistner")
+	// if the last feedback has more than 5 minutes, complete the job
+	// else wait more 5 minutes
+	if job.UpdatedAt > time.Now().Add(-5*time.Minute).UnixNano() {
+		at := time.Now().Add(5 * time.Minute).UnixNano()
+		_, err = b.Workers.ScheduleJobCompletedJob(job.ID.String(), at)
+		checkErr(l, err)
+	}
 
 	if b.Workers.SendgridClient != nil {
 		err = email.SendJobCompletedEmail(b.Workers.SendgridClient, job, job.JobGroup.App.Name)

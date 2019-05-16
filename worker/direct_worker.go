@@ -233,7 +233,7 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 		job.CompletedAt = time.Now().UnixNano()
 		_, err = b.Workers.MarathonDB.Model(&job).Column("completed_at").Update()
 
-		at := time.Now().Add(b.Workers.Config.GetDuration("workers.processBatch.intervalToSendCompletedJob")).UnixNano()
+		at := time.Now().Add(5 * time.Minute).UnixNano()
 		_, err = b.Workers.ScheduleJobCompletedJob(job.ID.String(), at)
 	}
 }

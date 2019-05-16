@@ -190,7 +190,7 @@ func (h *Handler) generatePGIncrJSON(jobID string, values map[string]int) string
 		m = append(m, fmt.Sprintf(`"%s":',COALESCE(feedbacks->>'%s','0')::int + %d,'`, k, k, v))
 	}
 	joinedModifiers := strings.Join(m, ",")
-	endQ := fmt.Sprintf(`}')::jsonb WHERE id = '%s';`, jobID)
+	endQ := fmt.Sprintf(`}')::jsonb, (extract(epoch from now())*1000000000)::bigint WHERE id = '%s';`, jobID)
 	query := fmt.Sprintf("%s%s%s", q, joinedModifiers, endQ)
 	h.Logger.Debug("will run query", zap.String("query", query))
 	return query
