@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/asaskevich/govalidator"
-	"github.com/labstack/echo"
 	"github.com/satori/go.uuid"
 	"github.com/topfreegames/marathon/interfaces"
 )
@@ -37,37 +36,27 @@ type Job struct {
 	ID                  uuid.UUID              `sql:",pk" json:"id"`
 	TotalBatches        int                    `json:"totalBatches"`
 	CompletedBatches    int                    `json:"completedBatches"`
-	ControlGroup        float64                `json:"controlGroup"`
-	TotalUsers          int                    `json:"totalUsers"`
 	TotalTokens         int                    `json:"totalTokens"`
+	TotalUsers          int                    `json:"totalUsers"`
 	CompletedTokens     int                    `json:"completedTokens"`
 	DBPageSize          int                    `json:"dbPageSize"`
-	Localized           bool                   `json:"localized"`
 	CompletedAt         int64                  `json:"completedAt"`
 	ExpiresAt           int64                  `json:"expiresAt"`
 	StartsAt            int64                  `json:"startsAt"`
-	Context             map[string]interface{} `json:"context"`
 	Service             string                 `json:"service"`
 	Filters             map[string]interface{} `json:"filters"`
-	Metadata            map[string]interface{} `json:"metadata"`
-	CSVPath             string                 `json:"csvPath"`
 	ControlGroupCSVPath string                 `json:"controlGroupCsvPath"`
-	CreatedBy           string                 `json:"createdBy"`
-	App                 App                    `json:"app"`
-	AppID               uuid.UUID              `json:"appId"`
 	JobGroupID          uuid.UUID              `json:"jobGroupId" sql:",null"`
-	TemplateName        string                 `json:"templateName"`
-	PastTimeStrategy    string                 `json:"pastTimeStrategy"`
 	Status              string                 `json:"status"`
 	Feedbacks           map[string]interface{} `json:"feedbacks"`
-	CreatedAt           int64                  `json:"createdAt"`
 	UpdatedAt           int64                  `json:"updatedAt"`
 	StatusEvents        []*Status              `json:"statusEvents"`
+	JobGroup            *JobGroup              `json:"jobGroup"`
 }
 
 // Validate implementation of the InputValidation interface
-func (j *Job) Validate(c echo.Context) error {
-	valid := govalidator.StringMatches(j.Service, "^(,?(apns|gcm))+$")
+func (j *Job) Validate() error {
+	valid := govalidator.StringMatches(j.Service, "^(apns|gcm)$")
 	if !valid {
 		return InvalidField("service")
 	}
@@ -77,36 +66,18 @@ func (j *Job) Validate(c echo.Context) error {
 		return InvalidField("expiresAt")
 	}
 
-	valid = j.StartsAt == 0 || j.Localized || time.Now().UnixNano() < j.StartsAt
-	if !valid {
-		return InvalidField("startsAt")
-	}
-
-	valid = j.ControlGroup >= 0 && j.ControlGroup < 1
-	if !valid {
-		return InvalidField("controlGroup")
-	}
-
-	valid = govalidator.IsEmail(j.CreatedBy)
-	if !valid {
-		return InvalidField("createdBy")
-	}
-
-	valid = !(len(j.Filters) != 0 && !govalidator.IsNull(j.CSVPath))
+	valid = !(len(j.Filters) != 0 && !govalidator.IsNull(j.JobGroup.CSVPath))
 	if !valid {
 		return InvalidField("filters or csvPath must exist, not both")
 	}
 
-	if !govalidator.IsNull(j.CSVPath) && govalidator.Contains(j.CSVPath, "s3://") {
-		return InvalidField("csvPath: cannot contain s3 protocol, just the bucket path")
-	}
 	return nil
 }
 
 // Labels return the labels for metrics
 func (j *Job) Labels() []string {
 	return []string{
-		fmt.Sprintf("game:%s", j.App.Name),
+		fmt.Sprintf("game:%s", j.JobGroup.App.Name),
 		fmt.Sprintf("platform:%s", j.Service),
 	}
 }

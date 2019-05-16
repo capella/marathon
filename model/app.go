@@ -24,7 +24,6 @@ package model
 
 import (
 	"github.com/asaskevich/govalidator"
-	"github.com/labstack/echo"
 	"github.com/satori/go.uuid"
 )
 
@@ -40,7 +39,7 @@ type App struct {
 }
 
 // Validate implementation of the InputValidation interface
-func (a *App) Validate(c echo.Context) error {
+func (a *App) Validate() error {
 	valid := govalidator.StringLength(a.Name, "1", "255")
 	if !valid {
 		return InvalidField("name")

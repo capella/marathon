@@ -23,12 +23,41 @@
 package model
 
 import (
+	"github.com/asaskevich/govalidator"
 	"github.com/satori/go.uuid"
 )
 
 // JobGroup is a collection of jobs
 type JobGroup struct {
-	ID    uuid.UUID `sql:",pk" json:"id"`
-	AppID uuid.UUID `json:"appId"`
-	Jobs  []*Job    `json:"jobs"`
+	ID               uuid.UUID              `sql:",pk" json:"id"`
+	AppID            uuid.UUID              `json:"appId"`
+	CreatedAt        int64                  `json:"createdAt"`
+	Context          map[string]interface{} `json:"context"`
+	Metadata         map[string]interface{} `json:"metadata"`
+	TemplateName     string                 `json:"templateName"`
+	ControlGroup     float64                `json:"controlGroup"`
+	CreatedBy        string                 `json:"createdBy"`
+	CSVPath          string                 `json:"csvPath"`
+	App              *App                   `json:"app"`
+	Jobs             []*Job                 `json:"jobs"`
+	Localized        bool                   `json:"localized"`
+	PastTimeStrategy string                 `json:"pastTimeStrategy"`
+}
+
+// Validate implementation of the InputValidation interface
+func (j *JobGroup) Validate() error {
+	valid := j.ControlGroup >= 0 && j.ControlGroup < 1
+	if !valid {
+		return InvalidField("controlGroup")
+	}
+
+	valid = govalidator.IsEmail(j.CreatedBy)
+	if !valid {
+		return InvalidField("createdBy")
+	}
+
+	if !govalidator.IsNull(j.CSVPath) && govalidator.Contains(j.CSVPath, "s3://") {
+		return InvalidField("csvPath: cannot contain s3 protocol, just the bucket path")
+	}
+	return nil
 }

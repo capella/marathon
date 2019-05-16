@@ -24,7 +24,6 @@ package model
 
 import (
 	"github.com/asaskevich/govalidator"
-	"github.com/labstack/echo"
 	"github.com/satori/go.uuid"
 )
 
@@ -36,14 +35,14 @@ type Template struct {
 	Defaults  map[string]interface{} `json:"defaults"`
 	Body      map[string]interface{} `json:"body"`
 	CreatedBy string                 `json:"createdBy"`
-	App       App                    `json:"app"`
+	App       *App                   `json:"app"`
 	AppID     uuid.UUID              `json:"appId"`
 	CreatedAt int64                  `json:"createdAt"`
 	UpdatedAt int64                  `json:"updatedAt"`
 }
 
 // Validate implementation of the InputValidation interface
-func (t *Template) Validate(c echo.Context) error {
+func (t *Template) Validate() error {
 	valid := govalidator.StringLength(t.Name, "1", "255")
 	if !valid {
 		return InvalidField("name")

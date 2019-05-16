@@ -24,7 +24,6 @@ package model
 
 import (
 	"github.com/asaskevich/govalidator"
-	"github.com/labstack/echo"
 	"github.com/satori/go.uuid"
 )
 
@@ -40,7 +39,7 @@ type User struct {
 }
 
 // Validate implementation of the InputValidation interface
-func (u *User) Validate(c echo.Context) error {
+func (u *User) Validate() error {
 	valid := govalidator.IsEmail(u.Email)
 	if !valid {
 		return InvalidField("email")
