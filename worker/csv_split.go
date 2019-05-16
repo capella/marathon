@@ -93,7 +93,7 @@ func (b *CSVSplitWorker) Process(message *workers.Msg) {
 	}
 
 	// get file information
-	totalSize, _, err := b.Workers.S3Client.DownloadChunk(0, 1, job.CSVPath)
+	totalSize, _, err := b.Workers.S3Client.DownloadChunk(0, 1, job.JobGroup.CSVPath)
 	b.checkErr(job, err)
 
 	start := 0

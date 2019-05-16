@@ -103,7 +103,7 @@ func (b *JobCompletedWorker) Process(message *workers.Msg) {
 	job.TagRunning(b.Workers.MarathonDB, nameJobCompleted, "starting")
 
 	if b.Workers.SendgridClient != nil {
-		err = email.SendJobCompletedEmail(b.Workers.SendgridClient, job, job.App.Name)
+		err = email.SendJobCompletedEmail(b.Workers.SendgridClient, job, job.JobGroup.App.Name)
 		b.checkErr(job, err)
 	}
 

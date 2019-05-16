@@ -96,7 +96,7 @@ func (b *CreateBatchesWorker) updateTotalTokens(totalTokens int, job *model.Job)
 func (b *CreateBatchesWorker) getUserBatchFromPG(userIds *[]string, job *model.Job) *[]User {
 	var users []User
 	start := time.Now()
-	query := fmt.Sprintf("SELECT user_id, token, locale, tz FROM %s WHERE user_id IN (?)", GetPushDBTableName(job.App.Name, job.Service))
+	query := fmt.Sprintf("SELECT user_id, token, locale, tz FROM %s WHERE user_id IN (?)", GetPushDBTableName(job.JobGroup.App.Name, job.Service))
 	_, err := b.Workers.PushDB.Query(&users, query, pg.In(*userIds))
 	b.Workers.Statsd.Timing("get_csv_batch_from_pg", time.Now().Sub(start), job.Labels(), 1)
 
@@ -127,7 +127,7 @@ func (b *CreateBatchesWorker) sendBatches(users []User, job *model.Job) {
 	log.I(l, "sending batch of users to process batches worker", func(cm log.CM) {
 		cm.Write(zap.Int("numUsers", len(users)))
 	})
-	_, err := b.Workers.CreateProcessBatchJob(job.ID.String(), job.App.Name, &users)
+	_, err := b.Workers.CreateProcessBatchJob(job.ID.String(), job.JobGroup.App.Name, &users)
 	b.checkErr(job, err)
 }
 
@@ -140,7 +140,7 @@ func (b *CreateBatchesWorker) updateTotalUsers(job *model.Job, totalUsers int) {
 func (b *CreateBatchesWorker) processIDs(userIds []string, msg *BatchPart) {
 	l := b.Logger
 	// create a controll group if needed
-	controlGroupSize := int(math.Ceil(float64(len(userIds)) * msg.Job.ControlGroup))
+	controlGroupSize := int(math.Ceil(float64(len(userIds)) * msg.Job.JobGroup.ControlGroup))
 	if controlGroupSize > 0 {
 		if controlGroupSize >= len(userIds) {
 			panic("control group size cannot be higher than number of users")
@@ -168,9 +168,6 @@ func (b *CreateBatchesWorker) processIDs(userIds []string, msg *BatchPart) {
 			)
 		})
 	}
-
-	// update total job info
-	b.updateTotalUsers(&msg.Job, len(userIds))
 
 	// pull from db and send to kafta
 	b.processBatch(&userIds, &msg.Job)
@@ -261,7 +258,7 @@ func (b *CreateBatchesWorker) Process(message *workers.Msg) {
 	}
 
 	start := time.Now()
-	_, buffer, err := b.Workers.S3Client.DownloadChunk(int64(msg.Start), int64(msg.Size), msg.Job.CSVPath)
+	_, buffer, err := b.Workers.S3Client.DownloadChunk(int64(msg.Start), int64(msg.Size), msg.Job.JobGroup.CSVPath)
 	labels := msg.Job.Labels()
 	labels = append(labels, fmt.Sprintf("error:%t", err != nil))
 	b.Workers.Statsd.Timing("get_csv_from_s3", time.Now().Sub(start), labels, 1)

@@ -216,8 +216,8 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 		cm.Write(zap.String("topic", topic))
 	})
 	for _, user := range parsed.Users {
-		templateName := job.TemplateName
-		templateNames := strings.Split(job.TemplateName, ",")
+		templateName := job.JobGroup.TemplateName
+		templateNames := strings.Split(job.JobGroup.TemplateName, ",")
 
 		if templateNames != nil && len(templateNames) > 1 {
 			templateName = RandomElementFromSlice(templateNames)
@@ -237,7 +237,7 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 			checkErr(l, fmt.Errorf("there is no template for the given locale or 'en'"))
 		}
 
-		msgStr, msgErr := BuildMessageFromTemplate(template, job.Context)
+		msgStr, msgErr := BuildMessageFromTemplate(template, job.JobGroup.Context)
 		if msgErr != nil {
 			b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
 		}
@@ -258,13 +258,13 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 		}
 
 		dryRun := false
-		if val, ok := job.Metadata["dryRun"]; ok {
+		if val, ok := job.JobGroup.Metadata["dryRun"]; ok {
 			if dryRun, ok = val.(bool); ok {
 				pushMetadata["dryRun"] = dryRun
 			}
 		}
 
-		err = b.sendToKafka(job.Service, topic, msg, job.Metadata, pushMetadata, user.Token, job.ExpiresAt, templateName)
+		err = b.sendToKafka(job.Service, topic, msg, job.JobGroup.Metadata, pushMetadata, user.Token, job.ExpiresAt, templateName)
 		if err != nil {
 			batchErrorCounter = batchErrorCounter + 1
 			log.E(l, "Failed to send message to Kafka.", func(cm log.CM) {
@@ -272,7 +272,7 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 					zap.String("service", job.Service),
 					zap.String("topic", topic),
 					zap.Object("msg", msg),
-					zap.Object("metadata", job.Metadata),
+					zap.Object("metadata", job.JobGroup.Metadata),
 					zap.Object("token", user.Token),
 					zap.Object("expiresAt", job.ExpiresAt),
 					zap.Error(err),

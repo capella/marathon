@@ -282,7 +282,7 @@ func (w *Worker) createDirectBatchesJobWithOption(job *model.Job, options worker
 	var i uint64
 
 	job.GetJobInfoAndApp(w.MarathonDB)
-	tableName := GetPushDBTableName(job.App.Name, job.Service)
+	tableName := GetPushDBTableName(job.JobGroup.App.Name, job.Service)
 	query := fmt.Sprintf("SELECT reltuples::BIGINT AS estimate FROM pg_class WHERE relname = '%s';", tableName)
 	_, err := w.PushDB.QueryOne(&rownsEstimative, query)
 	if err != nil {
@@ -446,9 +446,9 @@ func (w *Worker) SendControlGroupToRedis(job *model.Job, ids []string) {
 
 // GetJob get a job from the db
 func (w *Worker) GetJob(jobID uuid.UUID) (*model.Job, error) {
-	job := model.Job{
+	job := &model.Job{
 		ID: jobID,
 	}
 	err := job.GetJobInfoAndApp(w.MarathonDB)
-	return &job, err
+	return job, err
 }

@@ -98,16 +98,6 @@ func (b *DirectWorker) checkComplete(job *model.Job) (bool, error) {
 	return job.CompletedBatches == job.TotalBatches, err
 }
 
-func (b *DirectWorker) getQuery(job *model.Job) string {
-	filters := job.Filters
-	whereClause := GetWhereClauseFromFilters(filters)
-	query := fmt.Sprintf("SELECT user_id, token, locale, tz FROM %s WHERE seq_id >= ? AND seq_id < ?", GetPushDBTableName(job.App.Name, job.Service))
-	if (whereClause) != "" {
-		query = fmt.Sprintf("%s AND %s", query, whereClause)
-	}
-	return query
-}
-
 // Process processes the messages sent to batch worker queue and send them to kafka
 func (b *DirectWorker) Process(message *workers.Msg) {
 	l := b.Logger.With(
@@ -119,6 +109,10 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 	data := message.Args().ToJson()
 	err := json.Unmarshal([]byte(data), &msg)
 	checkErr(l, err)
+
+	l = l.With(
+		zap.String("jobID", msg.JobUUID.String()),
+	)
 
 	job, err := b.Workers.GetJob(msg.JobUUID)
 	checkErr(l, err)
@@ -143,21 +137,24 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 		log.D(l, "valid")
 	}
 
+	statusString := fmt.Sprintf("slect from %d to %d", msg.SmallestSeqID, msg.BiggestSeqID)
+	job.TagRunning(b.Workers.MarathonDB, nameDirectWorker, statusString)
+
 	templatesByNameAndLocale, err := job.GetJobTemplatesByNameAndLocale(b.Workers.MarathonDB)
 	b.checkErr(job, err)
 
 	topicTemplate := b.Workers.Config.GetString("workers.topicTemplate")
-	topic := BuildTopicName(job.App.Name, job.Service, topicTemplate)
+	topic := BuildTopicName(job.JobGroup.App.Name, job.Service, topicTemplate)
 
 	var users []User
 	start := time.Now()
-	_, err = b.Workers.PushDB.Query(&users, b.getQuery(job), msg.SmallestSeqID, msg.BiggestSeqID)
+	_, err = b.Workers.PushDB.Query(&users, job.GetQuery(), msg.SmallestSeqID, msg.BiggestSeqID)
 	b.Workers.Statsd.Timing("get_from_pg", time.Now().Sub(start), job.Labels(), 1)
 
 	successfulUsers := len(users)
 
 	// create a controll group if needed
-	controlGroupSize := int(math.Ceil(float64(len(users)) * job.ControlGroup))
+	controlGroupSize := int(math.Ceil(float64(len(users)) * job.JobGroup.ControlGroup))
 	if controlGroupSize > 0 {
 		if controlGroupSize >= len(users) {
 			panic("control group size cannot be higher than number of users")
@@ -179,8 +176,8 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 	}
 
 	for _, user := range users {
-		templateName := job.TemplateName
-		templateNames := strings.Split(job.TemplateName, ",")
+		templateName := job.JobGroup.TemplateName
+		templateNames := strings.Split(job.JobGroup.TemplateName, ",")
 
 		if templateNames != nil && len(templateNames) > 1 {
 			templateName = RandomElementFromSlice(templateNames)
@@ -199,7 +196,7 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 			b.checkErr(job, fmt.Errorf("there is no template for the given locale or 'en'"))
 		}
 
-		msgStr, msgErr := BuildMessageFromTemplate(template, job.Context)
+		msgStr, msgErr := BuildMessageFromTemplate(template, job.JobGroup.Context)
 		b.checkErr(job, msgErr)
 
 		var msg map[string]interface{}
@@ -216,13 +213,13 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 		}
 
 		dryRun := false
-		if val, ok := job.Metadata["dryRun"]; ok {
+		if val, ok := job.JobGroup.Metadata["dryRun"]; ok {
 			if dryRun, ok = val.(bool); ok {
 				pushMetadata["dryRun"] = dryRun
 			}
 		}
 
-		err = b.sendToKafka(job.Service, topic, msg, job.Metadata, pushMetadata, user.Token, job.ExpiresAt, templateName)
+		err = b.sendToKafka(job.Service, topic, msg, job.JobGroup.Metadata, pushMetadata, user.Token, job.ExpiresAt, templateName)
 		if err != nil {
 			successfulUsers--
 		}
