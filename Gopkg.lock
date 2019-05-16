@@ -2,6 +2,19 @@
 
 
 [[projects]]
+  branch = "master"
+  digest = "1:65f2dcfeb6d0fb1240188bcbae5720e3e0f512fd9443d5739ea7f05ecf84e4a7"
+  name = "git.topfreegames.com/libs-frameworks/remote-assets-api"
+  packages = [
+    "app/helpers",
+    "constants",
+    "dal",
+    "models",
+  ]
+  pruneopts = "UT"
+  revision = "0c9a2fa442ab06682dd6487beae82fa54d86688a"
+
+[[projects]]
   digest = "1:bd285ec20a7450d2272631284de698f2d76e923a458fee90e99cc1db4b97708d"
   name = "github.com/DataDog/datadog-go"
   packages = ["statsd"]
@@ -165,6 +178,21 @@
   version = "v1.39.0"
 
 [[projects]]
+  digest = "1:0a2260bcfa15237979ef496f03fb6af215c247ad998881a4d039992228876ae3"
+  name = "github.com/go-pg/pg"
+  packages = [
+    ".",
+    "internal",
+    "internal/parser",
+    "internal/pool",
+    "orm",
+    "types",
+  ]
+  pruneopts = "UT"
+  revision = "ae5d5e7df4b2e598390e10b66b849c6af94f092b"
+  version = "v6.15.1"
+
+[[projects]]
   digest = "1:33082c63746b464db3d1c2c07a1396d860484d97fe857ef9e8668a9b406db09f"
   name = "github.com/go-redis/redis"
   packages = [
@@ -186,6 +214,27 @@
   packages = ["."]
   pruneopts = "UT"
   revision = "d9eb7a3d35ec988b8585d4a0068e462c27d28380"
+
+[[projects]]
+  digest = "1:2e3c336fc7fde5c984d2841455a658a6d626450b1754a854b3b32e7a8f49a07a"
+  name = "github.com/google/go-cmp"
+  packages = [
+    "cmp",
+    "cmp/internal/diff",
+    "cmp/internal/function",
+    "cmp/internal/value",
+  ]
+  pruneopts = "UT"
+  revision = "3af367b6b30c263d47e8895973edcca9a49cf029"
+  version = "v0.2.0"
+
+[[projects]]
+  digest = "1:d5f97fc268267ec1b61c3453058c738246fc3e746f14b1ae25161513b7367b0c"
+  name = "github.com/gorilla/mux"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "c5c6c98bc25355028a63748a498942a6398ccd22"
+  version = "v1.7.1"
 
 [[projects]]
   digest = "1:940e9fb2a4c62bffda44aaf42738cd2d6b80e0f042dd027ba60d49709196aaf1"
@@ -369,6 +418,17 @@
   revision = "e85f63af4302dc0e4277c6008ecf803f1d80e4f0"
 
 [[projects]]
+  digest = "1:90e282624796901d91e49c98f4a05dc4f6136d1aab7af39bd3dcf3e989273650"
+  name = "github.com/opentracing/opentracing-go"
+  packages = [
+    ".",
+    "log",
+  ]
+  pruneopts = "UT"
+  revision = "659c90643e714681897ec2521c60567dd21da733"
+  version = "v1.1.0"
+
+[[projects]]
   digest = "1:95741de3af260a92cc5c7f3f3061e85273f5a81b5db20d4bd68da74bd521675e"
   name = "github.com/pelletier/go-toml"
   packages = ["."]
@@ -489,11 +549,15 @@
   version = "v1.3.2"
 
 [[projects]]
-  digest = "1:837daeff14c020f4141513cff58e177f75926492ae02904663859a229bcbc014"
+  digest = "1:0627f5ddcaa4aff41cfee834d3be925a066c52d6b861dddf6d8058775d8a89e4"
   name = "github.com/topfreegames/extensions"
   packages = [
     "kafka",
     "kafka/interfaces",
+    "pg",
+    "pg/interfaces",
+    "tracing",
+    "tracing/pg",
     "util",
   ]
   pruneopts = "UT"
@@ -533,11 +597,12 @@
 
 [[projects]]
   branch = "master"
-  digest = "1:674a2405f77863f4f362e3e45078fd9caa647dc1c0e8b022e3b9dc1ae89fbc8f"
+  digest = "1:9607502b7199053c9294999ed9dce98d9c04e05d1b6610d3e979036f1dcad493"
   name = "golang.org/x/crypto"
   packages = [
     "acme",
     "acme/autocert",
+    "pbkdf2",
   ]
   pruneopts = "UT"
   revision = "4d3f4d9ffa16a13f451c3b2999e9c49e9750bf06"
@@ -612,10 +677,19 @@
   pruneopts = "UT"
   revision = "a5b47d31c556af34a302ce5d659e6fea44d90de0"
 
+[[projects]]
+  digest = "1:999d566ad1ae4303c456af5a155f7b42401cca4fd33552567ed9dd997b107a08"
+  name = "mellium.im/sasl"
+  packages = ["."]
+  pruneopts = "UT"
+  revision = "e58e780e1378aa4df5dc705364ff5ae9a4dd1e04"
+  version = "v0.2.1"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
   input-imports = [
+    "git.topfreegames.com/libs-frameworks/remote-assets-api/app/helpers",
     "github.com/DataDog/datadog-go/statsd",
     "github.com/Shopify/sarama",
     "github.com/asaskevich/govalidator",
