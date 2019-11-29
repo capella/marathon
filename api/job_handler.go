@@ -216,7 +216,7 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr})
 	}
 
-	if time.Now().UnixNano() < startsAt {
+	if startsAt != 0 && time.Now().After(time.Unix(0, startsAt)) {
 		localeErr := "startsAt can not be in the past"
 		return c.JSON(http.StatusUnprocessableEntity, &Error{Reason: localeErr})
 	}
@@ -277,27 +277,26 @@ func (a *Application) PostJobHandler(c echo.Context) error {
 	err = WithSegment("create-job", c, func() error {
 		// use transaction to prevent error
 		tx, err := a.DB.Begin()
+		if err != nil {
+			return err
+		}
 		// Rollback tx on error.
 		defer tx.Rollback()
 
 		err = WithSegment("create-group", c, func() error {
-			return a.DB.Insert(&jobGroup)
+			return tx.Insert(&jobGroup)
 		})
 		if err != nil {
 			return err
 		}
 
 		err = WithSegment("create-jobs", c, func() error {
-			return a.DB.Insert(&jobs)
+			return tx.Insert(&jobs)
 		})
 		if err != nil {
 			return err
 		}
-		err = tx.Commit()
-		if err != nil {
-			return err
-		}
-		return nil
+		return tx.Commit()
 	})
 
 	if err != nil {

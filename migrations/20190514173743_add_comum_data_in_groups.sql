@@ -9,7 +9,6 @@ ALTER TABLE job_groups ADD COLUMN "control_group" real;
 ALTER TABLE job_groups ADD COLUMN "created_by" text;
 ALTER TABLE job_groups ADD COLUMN "csv_path" text;
 ALTER TABLE job_groups ADD COLUMN "localized" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE job_groups ADD COLUMN "localized" BOOLEAN NOT NULL DEFAULT false;
 ALTER TABLE job_groups ADD COLUMN "past_time_strategy" TEXT;
 
 ALTER TABLE job_groups DROP CONSTRAINT jobs_group_app_id_apps_id_foreign;

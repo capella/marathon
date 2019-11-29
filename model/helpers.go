@@ -99,6 +99,17 @@ func (j *Job) GetQuery() string {
 	return query
 }
 
+// PredictQuery ...
+func (j *Job) PredictQuery() string {
+	filters := j.Filters
+	whereClause := GetWhereClauseFromFilters(filters)
+	query := fmt.Sprintf("SELECT user_id, token, locale, tz FROM %s_%s", j.JobGroup.App.Name, j.Service)
+	if (whereClause) != "" {
+		query = fmt.Sprintf("%s WHERE %s", query, whereClause)
+	}
+	return query
+}
+
 // GetWhereClauseFromFilters returns a string cointaining the where clause to use in the query
 func GetWhereClauseFromFilters(filters map[string]interface{}) string {
 	if len(filters) == 0 {

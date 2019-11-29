@@ -137,7 +137,7 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 		log.D(l, "valid")
 	}
 
-	statusString := fmt.Sprintf("slect from %d to %d", msg.SmallestSeqID, msg.BiggestSeqID)
+	statusString := fmt.Sprintf("select from %d to %d", msg.SmallestSeqID, msg.BiggestSeqID)
 	job.TagRunning(b.Workers.MarathonDB, nameDirectWorker, statusString)
 
 	templatesByNameAndLocale, err := job.GetJobTemplatesByNameAndLocale(b.Workers.MarathonDB)
@@ -233,8 +233,9 @@ func (b *DirectWorker) Process(message *workers.Msg) {
 		job.CompletedAt = time.Now().UnixNano()
 		_, err = b.Workers.MarathonDB.Model(&job).Column("completed_at").Update()
 
-		at := time.Now().Add(5 * time.Minute).UnixNano()
+		at := time.Now().Add(1 * time.Minute).UnixNano()
 		_, err = b.Workers.ScheduleJobCompletedJob(job.ID.String(), at)
+		job.TagSuccess(b.Workers.MarathonDB, nameDirectWorker, "Finished all batches")
 	}
 }
 

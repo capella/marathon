@@ -108,6 +108,7 @@ func (b *JobCompletedWorker) Process(message *workers.Msg) {
 		at := time.Now().Add(5 * time.Minute).UnixNano()
 		_, err = b.Workers.ScheduleJobCompletedJob(job.ID.String(), at)
 		checkErr(l, err)
+		return
 	}
 
 	if b.Workers.SendgridClient != nil {

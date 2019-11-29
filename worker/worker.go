@@ -283,7 +283,9 @@ func (w *Worker) createDirectBatchesJobWithOption(job *model.Job, options worker
 
 	job.GetJobInfoAndApp(w.MarathonDB)
 	tableName := GetPushDBTableName(job.JobGroup.App.Name, job.Service)
-	query := fmt.Sprintf("SELECT reltuples::BIGINT AS estimate FROM pg_class WHERE relname = '%s';", tableName)
+	query := job.PredictQuery()
+	query = strings.ReplaceAll(job.PredictQuery(), "'", "''")
+	query = fmt.Sprintf("SELECT count_estimate('%s') AS estimate", query)
 	_, err := w.PushDB.QueryOne(&rownsEstimative, query)
 	if err != nil {
 		return err
@@ -295,6 +297,10 @@ func (w *Worker) createDirectBatchesJobWithOption(job *model.Job, options worker
 	}
 	if rownsEstimative == 0 {
 		rownsEstimative = 1
+	}
+	// seq id start at 0
+	if rownsEstimative > maxSeqID+1 {
+		rownsEstimative = maxSeqID + 1
 	}
 	testBatchSize = (200000 * maxSeqID) / rownsEstimative
 

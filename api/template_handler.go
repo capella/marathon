@@ -77,7 +77,7 @@ func (a *Application) PostTemplateHandler(c echo.Context) error {
 	email := "temp.com"
 	if c.QueryParam("multiple") == "true" {
 		var templates []*model.Template
-		err = WithSegment("decodeAndValidate", c, func() error {
+		err = WithSegment("decodeAndValidateTemplatesArray", c, func() error {
 			return decodeAndValidateTemplatesArray(c, &templates)
 		})
 		if err != nil {

@@ -244,7 +244,8 @@ func (b *CreateBatchesWorker) Process(message *workers.Msg) {
 		zap.Int("totalParts", msg.TotalParts),
 	)
 
-	err = b.Workers.MarathonDB.Model(&msg.Job).Column("job.status", "App").Where("job.id = ?", msg.Job.ID).Select()
+	job, err := b.Workers.GetJob(msg.Job.ID)
+	msg.Job = *job
 	checkErr(l, err)
 	if msg.Job.Status == stoppedJobStatus {
 		l.Info("stopped job")
@@ -273,6 +274,10 @@ func (b *CreateBatchesWorker) Process(message *workers.Msg) {
 
 	// pull from db, send to control and send to kafta
 	b.processIDs(ids, &msg)
+	if len(ids) == 0 {
+		_, err := b.Workers.MarathonDB.Model(&msg.Job).Set("status = 'stopped', updated_at = ?", time.Now().UnixNano()).Where("id = ?", msg.Job.ID).Update()
+		b.checkErr(&msg.Job, err)
+	}
 
 	completedParts := b.setAsComplete(msg.Part, &msg.Job)
 

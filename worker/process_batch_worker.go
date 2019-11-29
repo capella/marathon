@@ -113,7 +113,7 @@ func (b *ProcessBatchWorker) updateJobBatchesInfo(jobID uuid.UUID) error {
 		return err
 	}
 	if job.TotalBatches != 0 && job.CompletedBatches == 1 && job.CompletedAt == 0 {
-		job.TagRunning(b.Workers.MarathonDB, "process_batche_worker", "starting")
+		job.TagRunning(b.Workers.MarathonDB, nameProcessBatchWorker, "starting")
 	}
 	if job.TotalBatches != 0 && job.CompletedBatches >= job.TotalBatches && job.CompletedAt == 0 {
 		l := b.Logger.With(
@@ -124,7 +124,7 @@ func (b *ProcessBatchWorker) updateJobBatchesInfo(jobID uuid.UUID) error {
 		)
 
 		log.I(l, "Finished all batches")
-		job.TagSuccess(b.Workers.MarathonDB, "process_batche_worker", "Finished all batches")
+		job.TagSuccess(b.Workers.MarathonDB, nameProcessBatchWorker, "Finished all batches")
 		job.CompletedAt = time.Now().UnixNano()
 		_, err = b.Workers.MarathonDB.Model(&job).Column("completed_at").Update()
 		if err != nil {
@@ -201,6 +201,10 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 		log.D(l, "valid")
 	}
 
+	if len(parsed.Users) == 0 {
+		b.checkErr(job, fmt.Errorf("there must be at least one user"))
+	}
+
 	templatesByNameAndLocale, err := job.GetJobTemplatesByNameAndLocale(b.Workers.MarathonDB)
 	if err != nil {
 		b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
@@ -234,20 +238,20 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 			template = val
 		} else {
 			b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
-			checkErr(l, fmt.Errorf("there is no template for the given locale or 'en'"))
+			b.checkErr(job, fmt.Errorf("there is no template for the given locale or 'en'"))
 		}
 
 		msgStr, msgErr := BuildMessageFromTemplate(template, job.JobGroup.Context)
 		if msgErr != nil {
 			b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
 		}
-		checkErr(l, msgErr)
+		b.checkErr(job, msgErr)
 		var msg map[string]interface{}
 		err = json.Unmarshal([]byte(msgStr), &msg)
 		if err != nil {
 			b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
 		}
-		checkErr(l, err)
+		b.checkErr(job, err)
 		pushMetadata := map[string]interface{}{
 			"userId":       user.UserID,
 			"pushTime":     time.Now().Unix(),
@@ -282,14 +286,21 @@ func (b *ProcessBatchWorker) Process(message *workers.Msg) {
 	}
 	log.D(l, "Sent push to pusher for batch users.")
 	err = b.updateJobBatchesInfo(parsed.JobID)
-	checkErr(l, err)
+	b.checkErr(job, err)
 	log.D(l, "Updated job batches info successfully.")
 	err = b.updateJobUsersInfo(parsed.JobID, len(parsed.Users)-batchErrorCounter)
-	checkErr(l, err)
+	b.checkErr(job, err)
 	log.D(l, "Updated job users info successfully.")
 	if float64(batchErrorCounter)/float64(len(parsed.Users)) > b.Workers.Config.GetFloat64("workers.processBatch.maxUserFailureInBatch") {
 		b.incrFailedBatches(job.ID, job.TotalBatches, parsed.AppName)
-		checkErr(l, fmt.Errorf("failed to send message to several users, considering batch as failed"))
+		b.checkErr(job, fmt.Errorf("failed to send message to several users, considering batch as failed"))
 	}
 	log.I(l, "finished")
+}
+
+func (b *ProcessBatchWorker) checkErr(job *model.Job, err error) {
+	if err != nil {
+		job.TagError(b.Workers.MarathonDB, nameProcessBatchWorker, err.Error())
+		checkErr(b.Logger, err)
+	}
 }

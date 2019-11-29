@@ -23,6 +23,7 @@ package api
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"strings"
 
@@ -161,13 +162,18 @@ func (a *Application) configureWorker() {
 
 func (a *Application) configureApplication() {
 	e := echo.New()
+	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins: []string{"*"},
+		AllowMethods: []string{http.MethodGet, http.MethodHead, http.MethodPut, http.MethodPatch, http.MethodPost, http.MethodDelete},
+	}))
+
 	_, w, _ := os.Pipe()
 	e.Logger.SetOutput(w)
 	e.Pre(middleware.RemoveTrailingSlash())
 
 	iamURL := a.Config.GetString("auth.url")
 	if iamURL == "" {
-		panic("IAM url is empty")
+		// panic("IAM url is empty")
 	}
 
 	// Base Routes

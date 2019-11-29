@@ -257,10 +257,6 @@ func ParseProcessBatchWorkerMessageArray(arr []interface{}) (*BatchWorkerMessage
 		return nil, err
 	}
 
-	if len(users) == 0 {
-		return nil, fmt.Errorf("there must be at least one user")
-	}
-
 	message := &BatchWorkerMessage{
 		JobID:   jobID,
 		AppName: arr[1].(string),
